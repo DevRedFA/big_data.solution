@@ -3,15 +3,19 @@ package sedykh.tradescalc;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.text.ParseException;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Formatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 public class Calculator {
@@ -66,41 +70,40 @@ public class Calculator {
                     map.get(Exchange.X).add(new Trade(parsed, Exchange.X));
                     break;
                 default:
-                    System.out.println("parsed[parsed.length - 1]" + parsed[parsed.length - 1]);
-                    break;
+                    throw new RuntimeException("Wrong Exchange: " + parsed[parsed.length - 1]);
             }
         });
-        final Formatter formatter = new Formatter();
-        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
+        final ExecutorService executorService = Executors.newCachedThreadPool();
 
+        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
             Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
-            results.add(formatter.format("–езультаты дл€ биржы: \"%s\" : максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
-                    entry.getKey(),
-                    maxEntry.getKey(),
-                    maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
-                    maxEntry.getValue()).toString());
-            System.out.printf("–езультаты дл€ биржы: \"%s\" : максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
-                    entry.getKey(),
-                    maxEntry.getKey(),
-                    maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
-                    maxEntry.getValue());
-            System.out.println();
+            final String formattedResult = getFormattedResult(maxEntry, entry);
+            results.add(formattedResult);
+            System.out.println(formattedResult);
         }
         List<Trade> fullTrades = new ArrayList<>();
         map.values().forEach(fullTrades::addAll);
         final Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(fullTrades);
-
-        results.add(formatter.format("–езультаты дл€ всех бирж: максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
-                maxEntry.getKey(),
-                maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
-                maxEntry.getValue()).toString());
-        System.out.printf("–езультаты дл€ всех бирж: максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
-                maxEntry.getKey(),
-                maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
-                maxEntry.getValue());
-        System.out.println();
+        final String formattedResult = getFormattedResult(maxEntry);
+        results.add(formattedResult);
+        System.out.println(formattedResult);
 
         return results;
+    }
+
+    private String getFormattedResult(Map.Entry<LocalTime, Integer> maxEntry) {
+        return new Formatter().format("–езультаты дл€ всех бирж: максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
+                maxEntry.getKey(),
+                maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
+                maxEntry.getValue()).toString();
+    }
+
+    private String getFormattedResult(Map.Entry<LocalTime, Integer> maxEntry, Map.Entry<Exchange, List<Trade>> entry) {
+        return new Formatter().format("–езультаты дл€ биржы: \"%s\" : максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
+                entry.getKey(),
+                maxEntry.getKey(),
+                maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
+                maxEntry.getValue()).toString();
     }
 
     private Map.Entry<LocalTime, Integer> countMaxEntry(List<Trade> list) {
@@ -109,38 +112,27 @@ public class Calculator {
     }
 
     private Map.Entry<LocalTime, Integer> getLocalTimeIntegerEntry(Map<LocalTime, Integer> countTrades) {
-//        Map.Entry<LocalTime, Integer> maxEntry = null;
-//        for (Map.Entry<LocalTime, Integer> entry1 : countTrades.entrySet()) {
-//            if (maxEntry == null) {
-//                maxEntry = entry1;
-//            }
-//            if (entry1.getValue() > maxEntry.getValue()) {
-//                maxEntry = entry1;
-//            }
-//        }
-        final Map.Entry<LocalTime, Integer> localTimeIntegerEntry = countTrades.entrySet().stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
-//        return maxEntry;
-        return localTimeIntegerEntry;
+        return countTrades.entrySet().stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
     }
 
     // можно сортировать или пройтись и раскидать по мапам
     // проверить оба варинта
     private Map<LocalTime, Integer> countTrades(List<Trade> list) {
-        Map<LocalTime, Integer> mapResult = new HashMap<>();
-        LocalTime startTime = null;
-        Optional<Trade> time = list.parallelStream().min(Comparator.comparing(Trade::getTime));
+        final Map<LocalTime, Integer> mapResult = new HashMap<>();
+        final Optional<Trade> time = list.parallelStream().min(Comparator.comparing(Trade::getTime));
         if (time.isPresent()) {
-            startTime = time.get().getTime();
-        }
-
-        LocalTime finalStartTime = startTime.plus(1, ChronoUnit.SECONDS);
-        list.sort(Comparator.comparing(Trade::getTime));
-        for (Trade trade : list) {
-            if (trade.getTime().compareTo(finalStartTime) < 0) {
-                mapResult.put(finalStartTime, mapResult.getOrDefault(finalStartTime, 0) + 1);
-            } else {
-                finalStartTime = finalStartTime.plus(1, ChronoUnit.SECONDS);
-            }
+            LocalTime startTime = time.get().getTime();
+            final LocalTime[] finalStartTime = {startTime.plus(1, ChronoUnit.SECONDS)};
+            list.parallelStream().
+                    sorted(Comparator.comparing(Trade::getTime))
+                    .sequential()
+                    .forEach(trade -> {
+                        if (trade.getTime().compareTo(finalStartTime[0]) < 0) {
+                            mapResult.put(finalStartTime[0], mapResult.getOrDefault(finalStartTime[0], 0) + 1);
+                        } else {
+                            finalStartTime[0] = finalStartTime[0].plus(1, ChronoUnit.SECONDS);
+                        }
+                    });
         }
         return mapResult;
     }
