@@ -14,13 +14,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 
-public class Calculator {
+class Calculator {
 
-    public List<String> calculate(File file) {
+    List<String> calculate(File file) {
         List<String> results = new ArrayList<>();
         List<String> lines = new ArrayList<>();
         Map<Exchange, List<Trade>> map = new HashMap<>();
@@ -73,21 +77,54 @@ public class Calculator {
                     throw new RuntimeException("Wrong Exchange: " + parsed[parsed.length - 1]);
             }
         });
-        final ExecutorService executorService = Executors.newCachedThreadPool();
+//        final ExecutorService executorService = Executors.newCachedThreadPool();
 
-        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
-            Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
-            final String formattedResult = getFormattedResult(maxEntry, entry);
-            results.add(formattedResult);
-            System.out.println(formattedResult);
-        }
+//        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
+//            Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
+//            final String formattedResult = getFormattedResult(maxEntry, entry);
+//            results.add(formattedResult);
+//        }
+
+        map.entrySet().forEach(entry -> {
+            if (!entry.getValue().isEmpty()) {
+                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
+                final String formattedResult = getFormattedResult(maxEntry, entry);
+                results.add(formattedResult);
+            }
+        });
+
+
+//        List<Future<String>> futureList = new CopyOnWriteArrayList<>();
+//        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
+//            final Future<String> submit = executorService.submit(() -> {
+//                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
+//                return getFormattedResult(maxEntry, entry);
+//            });
+//            futureList.add(submit);
+//        }
+
+//        map.entrySet().parallelStream().forEach(entry -> {
+//            final Future<String> submit = executorService.submit(() -> {
+//                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
+//                return getFormattedResult(maxEntry, entry);
+//            });
+//            futureList.add(submit);
+//        });
+
+//        futureList.forEach(s -> {
+//            try {
+//                results.add(s.get());
+//            } catch (InterruptedException | ExecutionException e) {
+//                e.printStackTrace();
+//            }
+//        });
+
         List<Trade> fullTrades = new ArrayList<>();
         map.values().forEach(fullTrades::addAll);
         final Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(fullTrades);
         final String formattedResult = getFormattedResult(maxEntry);
         results.add(formattedResult);
-        System.out.println(formattedResult);
-
+        results.forEach(System.out::println);
         return results;
     }
 
@@ -122,15 +159,16 @@ public class Calculator {
         final Optional<Trade> time = list.parallelStream().min(Comparator.comparing(Trade::getTime));
         if (time.isPresent()) {
             LocalTime startTime = time.get().getTime();
-            final LocalTime[] finalStartTime = {startTime.plus(1, ChronoUnit.SECONDS)};
+            final LocalTime[] finalStartTime = {startTime};
             list.parallelStream().
                     sorted(Comparator.comparing(Trade::getTime))
                     .sequential()
                     .forEach(trade -> {
-                        if (trade.getTime().compareTo(finalStartTime[0]) < 0) {
+                        if (trade.getTime().compareTo(finalStartTime[0].plus(1, ChronoUnit.SECONDS)) < 0) {
                             mapResult.put(finalStartTime[0], mapResult.getOrDefault(finalStartTime[0], 0) + 1);
                         } else {
                             finalStartTime[0] = finalStartTime[0].plus(1, ChronoUnit.SECONDS);
+                            mapResult.put(finalStartTime[0], 1);
                         }
                     });
         }
@@ -144,7 +182,7 @@ public class Calculator {
         private final int size;
         private final Exchange exchange;
 
-        public Trade(String[] data, Exchange exchange) {
+        Trade(String[] data, Exchange exchange) {
             this.exchange = exchange;
             size = Integer.parseInt(data[2]);
             price = Float.parseFloat(data[1]);
@@ -158,7 +196,7 @@ public class Calculator {
             this.exchange = exchange;
         }
 
-        public LocalTime getTime() {
+        LocalTime getTime() {
             return time;
         }
 

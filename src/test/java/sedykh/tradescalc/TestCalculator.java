@@ -14,7 +14,7 @@ public class TestCalculator {
     @Test
     public void testCalcFunc() throws Exception {
         final Calculator calculator = new Calculator();
-        File data = new File(getClass().getResource("/TRD2.csv").getFile());
+        File data = new File(getClass().getResource("/TRD1.csv").getFile());
         final List<String> list = calculator.calculate(data);
     }
 }
