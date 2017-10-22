@@ -3,29 +3,25 @@ package sedykh.tradescalc;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.text.ParseException;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Formatter;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 
 class Calculator {
 
     List<String> calculate(File file) {
         List<String> results = new ArrayList<>();
+        Map<Exchange, Map.Entry<LocalTime, Integer>> MaxOfThree = new HashMap<>();
+        List<String> resultsMaxOfThree = new ArrayList<>();
         List<String> lines = new ArrayList<>();
         Map<Exchange, List<Trade>> map = new HashMap<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
@@ -77,55 +73,100 @@ class Calculator {
                     throw new RuntimeException("Wrong Exchange: " + parsed[parsed.length - 1]);
             }
         });
-//        final ExecutorService executorService = Executors.newCachedThreadPool();
 
-//        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
-//            Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
-//            final String formattedResult = getFormattedResult(maxEntry, entry);
-//            results.add(formattedResult);
-//        }
 
         map.entrySet().forEach(entry -> {
             if (!entry.getValue().isEmpty()) {
                 Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
-                final String formattedResult = getFormattedResult(maxEntry, entry);
+                final String formattedResult = getFormattedResult(maxEntry, entry.getKey());
                 results.add(formattedResult);
             }
         });
 
+        map.entrySet().forEach(entry -> {
+            if (!entry.getValue().isEmpty()) {
+                final Map.Entry<LocalTime, Integer> localTimeIntegerEntry = getMaxByThree(entry.getValue());
+                MaxOfThree.put(entry.getKey(), localTimeIntegerEntry);
+            }
+        });
 
-//        List<Future<String>> futureList = new CopyOnWriteArrayList<>();
-//        for (Map.Entry<Exchange, List<Trade>> entry : map.entrySet()) {
-//            final Future<String> submit = executorService.submit(() -> {
-//                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
-//                return getFormattedResult(maxEntry, entry);
-//            });
-//            futureList.add(submit);
-//        }
 
-//        map.entrySet().parallelStream().forEach(entry -> {
-//            final Future<String> submit = executorService.submit(() -> {
-//                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(entry.getValue());
-//                return getFormattedResult(maxEntry, entry);
-//            });
-//            futureList.add(submit);
-//        });
-
-//        futureList.forEach(s -> {
-//            try {
-//                results.add(s.get());
-//            } catch (InterruptedException | ExecutionException e) {
-//                e.printStackTrace();
-//            }
-//        });
+        MaxOfThree.entrySet().forEach(entry -> {
+            if (entry.getValue().getValue() != 0) {
+                final List<Trade> trades = map.get(entry.getKey());
+                LocalTime startTime = null;
+                int iStartTime = 0;
+                LocalTime endTime = null;
+                int iStopTime = 0;
+                final LocalTime startOfThree = entry.getValue()
+                        .getKey()
+                        .minus(250, ChronoUnit.MILLIS);
+                final LocalTime endOfThree = entry.getValue()
+                        .getKey()
+                        .plus(1000, ChronoUnit.MILLIS);
+                for (int i = 0; i < trades.size(); i++) {
+                    if (trades.get(i).getTime().compareTo(startOfThree) >= 0 && startTime == null) {
+                        startTime = trades.get(i).getTime();
+                        iStartTime = i;
+                    }
+                    if (trades.get(i).getTime().compareTo(endOfThree) >= 0 && endTime == null) {
+                        endTime = trades.get(i).getTime();
+                        iStopTime = i;
+                    }
+                }
+                final List<Trade> trades1 = trades.subList(iStartTime, iStopTime + 1);
+                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(trades1);
+                final String formattedResult = getFormattedResult(maxEntry, entry.getKey());
+                resultsMaxOfThree.add(formattedResult);
+            }
+        });
 
         List<Trade> fullTrades = new ArrayList<>();
         map.values().forEach(fullTrades::addAll);
         final Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(fullTrades);
         final String formattedResult = getFormattedResult(maxEntry);
         results.add(formattedResult);
-        results.forEach(System.out::println);
+
+        final Map.Entry<LocalTime, Integer> entry = getMaxByThree(fullTrades);
+        LocalTime startTime = null;
+        int iStartTime = 0;
+        LocalTime endTime = null;
+        int iStopTime = 0;
+        final LocalTime startOfThree = entry
+                .getKey()
+                .minus(250, ChronoUnit.MILLIS);
+        final LocalTime endOfThree = entry
+                .getKey()
+                .plus(1000, ChronoUnit.MILLIS);
+        for (int i = 0; i < fullTrades.size(); i++) {
+            if (fullTrades.get(i).getTime().compareTo(startOfThree) >= 0 && startTime == null) {
+                startTime = fullTrades.get(i).getTime();
+                iStartTime = i;
+            }
+            if (fullTrades.get(i).getTime().compareTo(endOfThree) >= 0 && endTime == null) {
+                endTime = fullTrades.get(i).getTime();
+                iStopTime = i;
+            }
+        }
+        final List<Trade> trades1 = fullTrades.subList(iStartTime, iStopTime + 1);
+        Map.Entry<LocalTime, Integer> maxEntry2 = countMaxEntry(trades1);
+        resultsMaxOfThree.add(getFormattedResult(maxEntry2));
+
         return results;
+    }
+
+    private Map.Entry<LocalTime, Integer> getMaxByThree(List<Trade> list) {
+        final Map<LocalTime, Integer> countTrades = countTrades(list);
+        final ArrayList<Map.Entry<LocalTime, Integer>> entries = new ArrayList<>(countTrades.entrySet());
+        final Map<LocalTime, Integer> countByThreeSec = new LinkedHashMap<>();
+        for (int i = 0; i < entries.size() - 2; i++) {
+            final Map.Entry<LocalTime, Integer> thisEntry = entries.get(i);
+            final Map.Entry<LocalTime, Integer> nextEntry = entries.get(i + 1);
+            final Map.Entry<LocalTime, Integer> next2Entry = entries.get(i + 2);
+            countByThreeSec.put(entries.get(i).getKey(), thisEntry.getValue() + nextEntry.getValue() + next2Entry.getValue());
+        }
+        return countByThreeSec.entrySet()
+                .stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
     }
 
     private String getFormattedResult(Map.Entry<LocalTime, Integer> maxEntry) {
@@ -135,16 +176,16 @@ class Calculator {
                 maxEntry.getValue()).toString();
     }
 
-    private String getFormattedResult(Map.Entry<LocalTime, Integer> maxEntry, Map.Entry<Exchange, List<Trade>> entry) {
+    private String getFormattedResult(Map.Entry<LocalTime, Integer> maxEntry, Exchange e) {
         return new Formatter().format("–езультаты дл€ биржы: \"%s\" : максимальное количество сделок в течение одной секунды было между %s и %s. ¬ этот интервал прошло %s сделок.",
-                entry.getKey(),
+                e,
                 maxEntry.getKey(),
                 maxEntry.getKey().plus(1, ChronoUnit.SECONDS).minus(1, ChronoUnit.MILLIS),
                 maxEntry.getValue()).toString();
     }
 
     private Map.Entry<LocalTime, Integer> countMaxEntry(List<Trade> list) {
-        final Map<LocalTime, Integer> countTrades = countTrades(list);
+        final Map<LocalTime, Integer> countTrades = nativeFind(list);
         return getLocalTimeIntegerEntry(countTrades);
     }
 
@@ -152,107 +193,60 @@ class Calculator {
         return countTrades.entrySet().stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
     }
 
-    // можно сортировать или пройтись и раскидать по мапам
-    // проверить оба варинта
-    private Map<LocalTime, Integer> countTrades(List<Trade> list) {
+
+    private Map<LocalTime, Integer> nativeFind(List<Trade> list) {
         final Map<LocalTime, Integer> mapResult = new HashMap<>();
-        final Optional<Trade> time = list.parallelStream().min(Comparator.comparing(Trade::getTime));
-        if (time.isPresent()) {
-            LocalTime startTime = time.get().getTime();
-            final LocalTime[] finalStartTime = {startTime};
-            list.parallelStream().
-                    sorted(Comparator.comparing(Trade::getTime))
-                    .sequential()
-                    .forEach(trade -> {
-                        if (trade.getTime().compareTo(finalStartTime[0].plus(1, ChronoUnit.SECONDS)) < 0) {
-                            mapResult.put(finalStartTime[0], mapResult.getOrDefault(finalStartTime[0], 0) + 1);
-                        } else {
-                            finalStartTime[0] = finalStartTime[0].plus(1, ChronoUnit.SECONDS);
-                            mapResult.put(finalStartTime[0], 1);
-                        }
-                    });
+        list.sort(Comparator.comparing(Trade::getTime));
+        for1:
+        for (int i = 0; i < list.size(); i++) {
+            final Trade trade = list.get(i);
+            if (mapResult.containsKey(trade.getTime())) {
+                continue;
+            }
+            LocalTime startTime = trade.getTime();
+            LocalTime endTime = startTime.plus(1, ChronoUnit.SECONDS);
+            for (int j = i + 1; j < list.size(); j++) {
+                final Trade tradeMayBe = list.get(j);
+                if (tradeMayBe.getTime().compareTo(endTime) < 0) {
+                    mapResult.put(startTime, mapResult.getOrDefault(startTime, 1) + 1);
+                } else {
+                    continue for1;
+                }
+            }
         }
         return mapResult;
     }
 
 
-    class Trade implements Comparable<Trade> {
-        private final LocalTime time;
-        private final float price;
-        private final int size;
-        private final Exchange exchange;
-
-        Trade(String[] data, Exchange exchange) {
-            this.exchange = exchange;
-            size = Integer.parseInt(data[2]);
-            price = Float.parseFloat(data[1]);
-            time = LocalTime.parse(data[0]);
+    private Map<LocalTime, Integer> countTrades(List<Trade> list) {
+        final Map<LocalTime, Integer> mapResult = new LinkedHashMap<>();
+        final Optional<Trade> timeEnd = list.parallelStream().max(Comparator.comparing(Trade::getTime));
+        LocalTime startTime = LocalTime.of(10, 0, 0, 0);
+        if (timeEnd.isPresent()) {
+            final LocalTime endTime = timeEnd.get().getTime();
+            LocalTime currentTime = startTime;
+            while (currentTime.compareTo(endTime) < 0) {
+                mapResult.put(currentTime, 0);
+                currentTime = currentTime.plus(250, ChronoUnit.MILLIS);
+            }
+            final Iterator<LocalTime> iterator = mapResult.keySet().iterator();
+            final LocalTime[] key = {iterator.next()};
+            final LocalTime[] threshold = {iterator.next()};
+            list.parallelStream().
+                    sorted(Comparator.comparing(Trade::getTime))
+                    .sequential()
+                    .forEach(trade -> {
+                        while (iterator.hasNext()) {
+                            if (trade.getTime().compareTo(threshold[0]) < 0) {
+                                mapResult.put(key[0], mapResult.getOrDefault(key[0], 0) + 1);
+                                break;
+                            } else {
+                                key[0] = threshold[0];
+                                threshold[0] = iterator.next();
+                            }
+                        }
+                    });
         }
-
-        public Trade(LocalTime time, float price, int size, Exchange exchange) {
-            this.time = time;
-            this.price = price;
-            this.size = size;
-            this.exchange = exchange;
-        }
-
-        LocalTime getTime() {
-            return time;
-        }
-
-        public float getPrice() {
-            return price;
-        }
-
-        public int getSize() {
-            return size;
-        }
-
-        public Exchange getExchange() {
-            return exchange;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-
-            Trade trade = (Trade) o;
-
-            return Float.compare(trade.price, price) == 0
-                    && size == trade.size
-                    && (time != null ? time.equals(trade.time)
-                    : trade.time == null)
-                    && exchange == trade.exchange;
-        }
-
-        @Override
-        public int hashCode() {
-            int result = time != null ? time.hashCode() : 0;
-            result = 31 * result + (price != +0.0f ? Float.floatToIntBits(price) : 0);
-            result = 31 * result + size;
-            result = 31 * result + (exchange != null ? exchange.hashCode() : 0);
-            return result;
-        }
-
-
-        @Override
-        public int compareTo(Trade o) {
-            return this.time.compareTo(o.getTime());
-        }
-    }
-
-
-    enum Exchange {
-        V,
-        D,
-        B,
-        Y,
-        J,
-        Q,
-        Z,
-        K,
-        P,
-        X
+        return mapResult;
     }
 }
