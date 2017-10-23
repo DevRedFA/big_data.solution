@@ -67,7 +67,7 @@ class Calculator {
 
         List<Trade> fullTrades = new ArrayList<>();
         map.values().forEach(fullTrades::addAll);
-        Collections.sort(fullTrades, Comparator.comparing(Trade::getTime));
+        fullTrades.sort(Comparator.comparing(Trade::getTime));
         final Map.Entry<LocalTime, Integer> entry = getMaxByPartition(fullTrades);
         LocalTime startTime = null;
         int iStartTime = 0;
@@ -118,6 +118,12 @@ class Calculator {
         return results;
     }
 
+    /**
+     * Parse file to map.
+     *
+     * @param file data file.
+     * @return card containing exchanges and related trades
+     */
     private Map<Exchange, List<Trade>> getExchangeMap(File file) {
         Map<Exchange, List<Trade>> map = new HashMap<>();
         List<String> lines = new ArrayList<>();
@@ -173,6 +179,12 @@ class Calculator {
         return map;
     }
 
+    /**
+     * Get max sum of n intervals.
+     *
+     * @param list list of trade.
+     * @return entry with time of max sum and max value.
+     */
     private Map.Entry<LocalTime, Integer> getMaxByPartition(List<Trade> list) {
         final Map<LocalTime, Integer> countTrades = countTrades(list);
         final ArrayList<Map.Entry<LocalTime, Integer>> entries = new ArrayList<>(countTrades.entrySet());
@@ -186,8 +198,7 @@ class Calculator {
             }
             countByThreeSec.put(entries.get(i).getKey(), sum);
         }
-        return countByThreeSec.entrySet()
-                .stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
+        return getLocalTimeIntegerEntry(countByThreeSec);
     }
 
     private String getFormattedResult(Map.Entry<LocalTime, Integer> maxEntry) {
@@ -205,15 +216,33 @@ class Calculator {
                 maxEntry.getValue()).toString();
     }
 
+    /**
+     * Calculation of trades falling in seconds, and choosing max result.
+     *
+     * @param list list of trades.
+     * @return entry with time of max sum and max value.
+     */
     private Map.Entry<LocalTime, Integer> countMaxEntry(List<Trade> list) {
         final Map<LocalTime, Integer> countTrades = nativeFind(list);
         return getLocalTimeIntegerEntry(countTrades);
     }
 
+    /**
+     * Get entry of map with max value.
+     *
+     * @param countTrades map containing entry with start of interval and count of trades in it.
+     * @return entry with time of max sum and max value.
+     */
     private Map.Entry<LocalTime, Integer> getLocalTimeIntegerEntry(Map<LocalTime, Integer> countTrades) {
-        return countTrades.entrySet().stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
+        return countTrades.entrySet().stream().max(Comparator.comparing(Map.Entry::getValue)).get();
     }
 
+    /**
+     * Calculation of trades falling in seconds.
+     *
+     * @param list list of trades.
+     * @return map containing entry with start of interval and count of trades in it.
+     */
     private Map<LocalTime, Integer> nativeFind(List<Trade> list) {
         final Map<LocalTime, Integer> mapResult = new HashMap<>();
         list.sort(Comparator.comparing(Trade::getTime));
@@ -237,6 +266,12 @@ class Calculator {
         return mapResult;
     }
 
+    /**
+     * Split time scale and count spaced trades.
+     *
+     * @param list list of trades.
+     * @return map containing entry with start of interval and count of trades in it.
+     */
     private Map<LocalTime, Integer> countTrades(List<Trade> list) {
         final Map<LocalTime, Integer> mapResult = new LinkedHashMap<>();
         final Optional<Trade> timeEnd = list.parallelStream().max(Comparator.comparing(Trade::getTime));
