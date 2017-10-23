@@ -6,6 +6,7 @@ import java.io.FileReader;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Formatter;
 import java.util.HashMap;
@@ -17,13 +18,109 @@ import java.util.Optional;
 
 
 class Calculator {
+    private static int PARTITIONS = 8;
 
-    List<String> calculate(File file) {
-        List<String> results = new ArrayList<>();
+    public List<String> calculateByMaxPartition(File file) {
         Map<Exchange, Map.Entry<LocalTime, Integer>> MaxOfThree = new HashMap<>();
         List<String> resultsMaxOfThree = new ArrayList<>();
-        List<String> lines = new ArrayList<>();
+
+        Map<Exchange, List<Trade>> map = getExchangeMap(file);
+
+        map.forEach((key, value) -> {
+            if (!value.isEmpty()) {
+                final Map.Entry<LocalTime, Integer> localTimeIntegerEntry = getMaxByPartition(value);
+                MaxOfThree.put(key, localTimeIntegerEntry);
+            }
+        });
+
+
+        MaxOfThree.forEach((key, value) -> {
+            if (value.getValue() != 0) {
+                final List<Trade> trades = map.get(key);
+                LocalTime startTime = null;
+                int iStartTime = 0;
+                LocalTime endTime = null;
+                int iStopTime = 0;
+                final LocalTime startOfThree = value
+                        .getKey()
+                        .minus(1000, ChronoUnit.MILLIS);
+                final LocalTime endOfThree = value
+                        .getKey()
+                        .plus(1000, ChronoUnit.MILLIS);
+                for (int i = 0; i < trades.size(); i++) {
+                    if (trades.get(i).getTime().compareTo(startOfThree) >= 0 && startTime == null) {
+                        startTime = trades.get(i).getTime();
+                        iStartTime = i;
+                    }
+                    if (trades.get(i).getTime().compareTo(endOfThree) >= 0 && endTime == null) {
+                        endTime = trades.get(i).getTime();
+                        iStopTime = i;
+                    }
+                }
+                final List<Trade> trades1 = trades.subList(iStartTime, iStopTime);
+                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(trades1);
+                final String formattedResult = getFormattedResult(maxEntry, key);
+                resultsMaxOfThree.add(formattedResult);
+            }
+        });
+
+
+        List<Trade> fullTrades = new ArrayList<>();
+        map.values().forEach(fullTrades::addAll);
+        Collections.sort(fullTrades, Comparator.comparing(Trade::getTime));
+        final Map.Entry<LocalTime, Integer> entry = getMaxByPartition(fullTrades);
+        LocalTime startTime = null;
+        int iStartTime = 0;
+        LocalTime endTime = null;
+        int iStopTime = 0;
+        final LocalTime startOfThree = entry
+                .getKey()
+                .minus(1000, ChronoUnit.MILLIS);
+        final LocalTime endOfThree = entry
+                .getKey()
+                .plus(1000, ChronoUnit.MILLIS);
+        for (int i = 0; i < fullTrades.size(); i++) {
+            if (fullTrades.get(i).getTime().compareTo(startOfThree) >= 0 && startTime == null) {
+                startTime = fullTrades.get(i).getTime();
+                iStartTime = i;
+            }
+            if (fullTrades.get(i).getTime().compareTo(endOfThree) >= 0 && endTime == null) {
+                endTime = fullTrades.get(i).getTime();
+                iStopTime = i;
+            }
+        }
+        final List<Trade> trades1 = fullTrades.subList(iStartTime, iStopTime + 1);
+        Map.Entry<LocalTime, Integer> maxEntry2 = countMaxEntry(trades1);
+        resultsMaxOfThree.add(getFormattedResult(maxEntry2));
+
+        return resultsMaxOfThree;
+    }
+
+    public List<String> calculateByNative(File file) {
+        List<String> results = new ArrayList<>();
+
+        Map<Exchange, List<Trade>> map = getExchangeMap(file);
+
+        map.forEach((key, value) -> {
+            if (!value.isEmpty()) {
+                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(value);
+                final String formattedResult = getFormattedResult(maxEntry, key);
+                results.add(formattedResult);
+            }
+        });
+
+        List<Trade> fullTrades = new ArrayList<>();
+        map.values().forEach(fullTrades::addAll);
+        final Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(fullTrades);
+        final String formattedResult = getFormattedResult(maxEntry);
+        results.add(formattedResult);
+
+        return results;
+    }
+
+    private Map<Exchange, List<Trade>> getExchangeMap(File file) {
         Map<Exchange, List<Trade>> map = new HashMap<>();
+        List<String> lines = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             while (reader.ready()) {
                 lines.add(reader.readLine());
@@ -73,97 +170,21 @@ class Calculator {
                     throw new RuntimeException("Wrong Exchange: " + parsed[parsed.length - 1]);
             }
         });
-
-
-        map.forEach((key, value) -> {
-            if (!value.isEmpty()) {
-                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(value);
-                final String formattedResult = getFormattedResult(maxEntry, key);
-                results.add(formattedResult);
-            }
-        });
-
-        map.forEach((key, value) -> {
-            if (!value.isEmpty()) {
-                final Map.Entry<LocalTime, Integer> localTimeIntegerEntry = getMaxByThree(value);
-                MaxOfThree.put(key, localTimeIntegerEntry);
-            }
-        });
-
-
-        MaxOfThree.forEach((key, value) -> {
-            if (value.getValue() != 0) {
-                final List<Trade> trades = map.get(key);
-                LocalTime startTime = null;
-                int iStartTime = 0;
-                LocalTime endTime = null;
-                int iStopTime = 0;
-                final LocalTime startOfThree = value
-                        .getKey()
-                        .minus(2000, ChronoUnit.MILLIS);
-                final LocalTime endOfThree = value
-                        .getKey()
-                        .plus(2000, ChronoUnit.MILLIS);
-                for (int i = 0; i < trades.size(); i++) {
-                    if (trades.get(i).getTime().compareTo(startOfThree) >= 0 && startTime == null) {
-                        startTime = trades.get(i).getTime();
-                        iStartTime = i;
-                    }
-                    if (trades.get(i).getTime().compareTo(endOfThree) >= 0 && endTime == null) {
-                        endTime = trades.get(i).getTime();
-                        iStopTime = i;
-                    }
-                }
-                final List<Trade> trades1 = trades.subList(iStartTime, iStopTime);
-                Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(trades1);
-                final String formattedResult = getFormattedResult(maxEntry, key);
-                resultsMaxOfThree.add(formattedResult);
-            }
-        });
-
-        List<Trade> fullTrades = new ArrayList<>();
-        map.values().forEach(fullTrades::addAll);
-        final Map.Entry<LocalTime, Integer> maxEntry = countMaxEntry(fullTrades);
-        final String formattedResult = getFormattedResult(maxEntry);
-        results.add(formattedResult);
-
-        final Map.Entry<LocalTime, Integer> entry = getMaxByThree(fullTrades);
-        LocalTime startTime = null;
-        int iStartTime = 0;
-        LocalTime endTime = null;
-        int iStopTime = 0;
-        final LocalTime startOfThree = entry
-                .getKey()
-                .minus(2000, ChronoUnit.MILLIS);
-        final LocalTime endOfThree = entry
-                .getKey()
-                .plus(2000, ChronoUnit.MILLIS);
-        for (int i = 0; i < fullTrades.size(); i++) {
-            if (fullTrades.get(i).getTime().compareTo(startOfThree) >= 0 && startTime == null) {
-                startTime = fullTrades.get(i).getTime();
-                iStartTime = i;
-            }
-            if (fullTrades.get(i).getTime().compareTo(endOfThree) >= 0 && endTime == null) {
-                endTime = fullTrades.get(i).getTime();
-                iStopTime = i;
-            }
-        }
-        final List<Trade> trades1 = fullTrades.subList(iStartTime, iStopTime + 1);
-        Map.Entry<LocalTime, Integer> maxEntry2 = countMaxEntry(trades1);
-        resultsMaxOfThree.add(getFormattedResult(maxEntry2));
-//        return resultsMaxOfThree;
-        return results;
+        return map;
     }
 
-    private Map.Entry<LocalTime, Integer> getMaxByThree(List<Trade> list) {
+    private Map.Entry<LocalTime, Integer> getMaxByPartition(List<Trade> list) {
         final Map<LocalTime, Integer> countTrades = countTrades(list);
         final ArrayList<Map.Entry<LocalTime, Integer>> entries = new ArrayList<>(countTrades.entrySet());
         final Map<LocalTime, Integer> countByThreeSec = new LinkedHashMap<>();
-        for (int i = 0; i < entries.size() - 2; i++) {
-            final Map.Entry<LocalTime, Integer> thisEntry = entries.get(i);
-            final Map.Entry<LocalTime, Integer> nextEntry = entries.get(i + 1);
-            final Map.Entry<LocalTime, Integer> next2Entry = entries.get(i + 2);
-            countByThreeSec.put(entries.get(i).getKey(), thisEntry.getValue() + nextEntry.getValue() + next2Entry.getValue());
+        final int parts = PARTITIONS;
+        for (int i = 0; i < entries.size() - parts + 1; i++) {
+            int sum = 0;
+            for (int j = i; j < i + parts; j++) {
+                final Map.Entry<LocalTime, Integer> thisEntry = entries.get(j);
+                sum += thisEntry.getValue();
+            }
+            countByThreeSec.put(entries.get(i).getKey(), sum);
         }
         return countByThreeSec.entrySet()
                 .stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
@@ -193,7 +214,6 @@ class Calculator {
         return countTrades.entrySet().stream().max((entry1, entry2) -> entry1.getValue() > entry2.getValue() ? 1 : -1).get();
     }
 
-
     private Map<LocalTime, Integer> nativeFind(List<Trade> list) {
         final Map<LocalTime, Integer> mapResult = new HashMap<>();
         list.sort(Comparator.comparing(Trade::getTime));
@@ -217,17 +237,17 @@ class Calculator {
         return mapResult;
     }
 
-
     private Map<LocalTime, Integer> countTrades(List<Trade> list) {
         final Map<LocalTime, Integer> mapResult = new LinkedHashMap<>();
         final Optional<Trade> timeEnd = list.parallelStream().max(Comparator.comparing(Trade::getTime));
         LocalTime startTime = LocalTime.of(10, 0, 0, 0);
+        final int step = (1000) / PARTITIONS;
         if (timeEnd.isPresent()) {
             final LocalTime endTime = timeEnd.get().getTime();
             LocalTime currentTime = startTime;
             while (currentTime.compareTo(endTime) < 0) {
                 mapResult.put(currentTime, 0);
-                currentTime = currentTime.plus(250, ChronoUnit.MILLIS);
+                currentTime = currentTime.plus(step, ChronoUnit.MILLIS);
             }
             final Iterator<LocalTime> iterator = mapResult.keySet().iterator();
             final LocalTime[] key = {iterator.next()};
